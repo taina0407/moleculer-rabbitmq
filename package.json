@@ -1,0 +1,32 @@
+{
+  "name": "moleculer-rabbitmq",
+  "version": "0.1.0",
+  "description": "Moleculer RabbitMQ queue plugin",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/taina0407/moleculer-rabbitmq.git"
+  },
+  "keywords": [
+    "moleculer",
+    "rabbitmq"
+  ],
+  "author": "taina0407",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/taina0407/moleculer-rabbitmq/issues"
+  },
+  "homepage": "https://github.com/taina0407/moleculer-rabbitmq#readme",
+  "devDependencies": {
+    "eslint": "^7.22.0",
+    "moleculer-repl": "^0.6.4"
+  },
+  "dependencies": {
+    "amqplib": "^0.7.1",
+    "lodash": "^4.17.21",
+    "moleculer": "^0.14.12"
+  }
+}
