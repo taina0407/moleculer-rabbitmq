@@ -15,7 +15,7 @@
     "rabbitmq"
   ],
   "author": "taina0407",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/taina0407/moleculer-rabbitmq/issues"
   },
