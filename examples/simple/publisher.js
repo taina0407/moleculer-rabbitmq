@@ -31,8 +31,13 @@ broker.createService({
     let name = 1;
     setInterval(async () => {
       const response = await broker.call("consumer.hello.async", {
+        // `params` is the real param will be passed to original action
         params: {
           name,
+        },
+        // `options` is the real options will be passed to original action
+        options: {
+          timeout: 2000,
         },
       });
       this.logger.info(`[PUBLISHER] PID: ${process.pid} Called job with name=${name} response=${JSON.stringify(response)}`);
