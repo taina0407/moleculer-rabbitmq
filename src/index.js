@@ -98,7 +98,9 @@ const initAMQPActions = function (schema) {
         retries: 2,
       },
       async handler(ctx) {
-        return this.sendAMQPMessage(ctx.action, {
+        const queueName = `amqp.${ctx.params.action}`;
+
+        return this.sendAMQPMessage(queueName, {
           params: ctx.params.params,
           options: ctx.params.options,
         }, {
