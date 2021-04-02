@@ -14,6 +14,7 @@ const queueMixin = QueueMixin({
 
 broker.createService({
   name: "publisher",
+  version: 1,
 
   mixins: [
     queueMixin,
@@ -26,11 +27,11 @@ broker.createService({
   },
 
   async started() {
-    await broker.waitForServices("consumer");
+    await broker.waitForServices({ name: "consumer", version: 1 });
 
     let name = 1;
     setInterval(async () => {
-      const response = await broker.call("consumer.hello.async", {
+      const response = await broker.call("v1.consumer.hello.async", {
         // `params` is the real param will be passed to original action
         params: {
           name,

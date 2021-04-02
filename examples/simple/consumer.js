@@ -14,6 +14,7 @@ const queueMixin = QueueMixin({
 
 broker.createService({
   name: "consumer",
+  version: 1,
 
   mixins: [
     queueMixin,
