@@ -41,7 +41,7 @@ const ACTION_OPTIONS_VALIDATOR = {
 const initAMQPQueues = function (schema) {
   Object.keys(schema.actions || {}).forEach((originActionName) => {
     if (schema.actions[originActionName] && schema.actions[originActionName].queue) {
-      const queueName = `amqp.${schema.name}.${originActionName}`;
+      const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${originActionName}`;
 
       const queueOption = Lodash.defaultsDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
 
@@ -55,7 +55,7 @@ const initAMQPQueues = function (schema) {
             return channel.reject(msg, false);
           }
 
-          const actionName = `${this.name}.${originActionName}`;
+          const actionName = `${this.version ? `v${this.version}.` : ""}${this.name}.${originActionName}`;
           const actionParams = messageData.params || {};
           const actionOptions = Lodash.defaultsDeep({}, messageData.options);
 
@@ -79,6 +79,10 @@ const initAMQPQueues = function (schema) {
 };
 
 const initAMQPActions = function (schema) {
+  if (!schema.actions) {
+    schema.actions = {};
+  }
+
   if (schema.settings.amqp.localPublisher) {
     schema.actions.callAsync = {
       visibility: "private",
@@ -94,7 +98,9 @@ const initAMQPActions = function (schema) {
         retries: 2,
       },
       async handler(ctx) {
-        return this.sendAMQPMessage(ctx.action, {
+        const queueName = `amqp.${ctx.params.action}`;
+
+        return this.sendAMQPMessage(queueName, {
           params: ctx.params.params,
           options: ctx.params.options,
         }, {
@@ -108,9 +114,9 @@ const initAMQPActions = function (schema) {
   }
 
   if (schema.settings.amqp.asyncActions) {
-    Object.keys(schema.actions || {}).forEach((actionName) => {
+    Object.keys(schema.actions).forEach((actionName) => {
       if (schema.actions[actionName] && schema.actions[actionName].queue) {
-        const queueName = `amqp.${schema.name}.${actionName}`;
+        const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${actionName}`;
 
         const asyncParams = {
           options: ACTION_OPTIONS_VALIDATOR,
@@ -225,7 +231,7 @@ module.exports = (options) => ({
 
   async started() {
     if (!this.settings.amqp || !this.settings.amqp.connection) {
-      this.logger.warn(`${this.name} is disabled because of empty "amqp.connection" setting`);
+      this.logger.warn(`${this.version ? `v${this.version}.` : ""}${this.name} is disabled because of empty "amqp.connection" setting`);
     }
 
     if (!["string", "object"].includes(typeof this.settings.amqp.connection)) {

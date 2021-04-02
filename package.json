@@ -1,6 +1,6 @@
 {
   "name": "moleculer-rabbitmq",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Moleculer RabbitMQ queue plugin",
   "main": "index.js",
   "scripts": {
