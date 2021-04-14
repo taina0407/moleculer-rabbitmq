@@ -30,14 +30,14 @@ broker.createService({
     hello: {
       queue: { // Enable queue for this action
         // Options for AMQP queue
-        channel: {
-          assert: {
+        amqp: {
+          queueAssert: {
             durable: true,
           },
+          consume: {
+            noAck: false,
+          },
           prefetch: 0,
-        },
-        consume: {
-          noAck: false,
         },
       },
       params: {

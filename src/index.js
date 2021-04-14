@@ -10,17 +10,32 @@ const DEFAULT_MESSAGE_OPTIONS = {
 };
 
 const DEFAULT_QUEUE_OPTIONS = {
-  channel: {
-    assert: {
-      durable: true,
-      // arguments: {
-      //   "x-message-deduplication": true,
-      // },
+  amqp: {
+    queueAssert: {
+      exclusive: false, // (boolean) if true, scopes the queue to the connection (defaults to false)
+      durable: true, // (boolean) if true, the queue will survive broker restarts, modulo the effects of exclusive and autoDelete; this defaults to true if not supplied, unlike the others
+      autoDelete: false, // (boolean) if true, the queue will be deleted when the number of consumers drops to zero (defaults to false)
+      arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+        "x-message-deduplication": true,
+      },
+    },
+    retryExchangeAssert: {
+      durable: true, // (boolean) if true, the exchange will survive broker restarts. Defaults to true.
+      autoDelete: false, // (boolean) if true, the exchange will be destroyed once the number of bindings for which it is the source drop to zero. Defaults to false.
+      alternateExchange: null, // (string) an exchange to send messages to if this exchange can’t route them to any queues.
+      arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+        "arguments.x-delayed-type": "direct",
+        "x-message-deduplication": true,
+      },
+    },
+    consume: {
+      noAck: false,
     },
     prefetch: 0,
   },
-  consume: {
-    noAck: false,
+  retry: {
+    max_retry: 0,
+    delay: 0,
   },
 };
 
@@ -47,7 +62,11 @@ const initAMQPQueues = function (schema) {
 
       this.$amqpOptions[queueName] = {
         options: queueOption,
-        async consumer(channel, msg) {
+        async consumeHandler(channel, msg) {
+          const {
+            retry: retryOptions,
+          } = queueOption;
+
           let messageData;
           try {
             messageData = JSON.parse(msg.content.toString()) || {};
@@ -63,12 +82,38 @@ const initAMQPQueues = function (schema) {
             await this.broker.call(actionName, actionParams, actionOptions);
             return channel.ack(msg);
           } catch (error) {
-            this.logger.error(error);
-            // if (msg.fields && msg.fields.redelivered) {
-            //   return channel.reject(msg, false);
-            // }
+            try {
+              if (retryOptions === true) {
+                await channel.nack(msg, true, true);
+              } else if (retryOptions && retryOptions.max_retry > 0) {
+                await channel.nack(msg, true, false);
+                const retry_count = (Lodash.get(msg, "properties.headers.x-retries") || 0) + 1;
+                let retry_delay = 0;
+                if (typeof retryOptions.delay === "function") {
+                  retry_delay = retryOptions.delay(retry_count);
+                } else if (typeof retryOptions.delay === "number") {
+                  retry_delay = retryOptions.delay;
+                }
 
-            return channel.nack(msg);
+                if (retry_count <= retryOptions.max_retry) {
+                  error.message += ` (Retring retry_count=${retry_count} in ${retry_delay} ms)`;
+                  await channel.publish(`${queueName}.retry`, queueName, msg.content, {
+                    headers: {
+                      "x-retries": retry_count,
+                      "x-delay": retry_delay,
+                    },
+                  });
+                } else {
+                  error.message += ` (Reached max_retry=${retryOptions.max_retry}, throwing away)`;
+                }
+              } else {
+                await channel.nack(msg, true, false);
+              }
+            } catch (retryError) {
+              this.logger.error(retryError);
+            }
+
+            this.logger.error(error);
           }
         },
       };
@@ -159,35 +204,42 @@ module.exports = (options) => ({
   name: "moleculer-rabbitmq",
 
   methods: {
-    async assertAMQPQueue(name) {
-      if (!this.$amqpQueues[name]) {
+    async assertAMQPQueue(queueName) {
+      if (!this.$amqpQueues[queueName]) {
         const {
-          channel: channelOptions = {},
-        } = this.$amqpOptions[name] || {};
+          options: {
+            amqp: amqpOptions = {},
+          } = {},
+        } = this.$amqpOptions[queueName] || {};
 
         try {
           const channel = await this.$amqpConnection.createChannel();
           channel.on("close", () => {
-            delete this.$amqpQueues[name];
+            delete this.$amqpQueues[queueName];
           });
           channel.on("error", (err) => {
             this.logger.error(err);
           });
 
-          await channel.assertQueue(name, channelOptions.assert);
+          await channel.assertQueue(queueName, amqpOptions.queueAssert);
 
-          if (channelOptions.prefetch != null) {
-            channel.prefetch(channelOptions.prefetch);
+          if (amqpOptions.prefetch != null) {
+            channel.prefetch(amqpOptions.prefetch);
           }
 
-          this.$amqpQueues[name] = channel;
+          if (amqpOptions.retryExchangeAssert) {
+            await channel.assertExchange(`${queueName}.retry`, "x-delayed-message", amqpOptions.retryExchangeAssert);
+            await channel.bindQueue(queueName, `${queueName}.retry`, queueName);
+          }
+
+          this.$amqpQueues[queueName] = channel;
         } catch (err) {
           this.logger.error(err);
           throw new MoleculerError("Unable to start queue");
         }
       }
 
-      return this.$amqpQueues[name];
+      return this.$amqpQueues[queueName];
     },
 
     async sendAMQPMessage(name, message, options) {
@@ -199,12 +251,12 @@ module.exports = (options) => ({
     async initAMQPConsumers() {
       Object.entries(this.$amqpOptions).forEach(async ([queueName, queueOption]) => {
         const {
-          consumer,
+          consumeHandler,
           consume: consumeOptions,
         } = queueOption;
 
         const amqpChannel = await this.assertAMQPQueue(queueName);
-        amqpChannel.consume(queueName, consumer.bind(this, amqpChannel), consumeOptions);
+        amqpChannel.consume(queueName, consumeHandler.bind(this, amqpChannel), consumeOptions);
       });
     },
   },

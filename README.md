@@ -37,14 +37,14 @@ broker.createService({
       // Enable queue for this action
       queue: {
         // Options for AMQP queue
-        channel: {
-          assert: {
+        amqp: {
+          queueAssert: {
             durable: true,
           },
+          consume: {
+            noAck: false,
+          },
           prefetch: 0,
-        },
-        consume: {
-          noAck: false,
         },
       },
       params: {
@@ -114,6 +114,94 @@ broker.createService({
 });
 ```
 
+# Retry failed jobs
+By default, this plugin will not retry failed job. There are two option to enable retry logic: *RabbitMQ requeue* and using *[rabbitmq-delayed-message-exchange](https://github.com/rabbitmq/rabbitmq-delayed-message-exchange) plugin*
+
+## RabbitMQ requeue
+Set retry option to true when declare queue to enable Rabbitmq requeue.
+Please note that the message will re requeue forever because *max_retry* is not available
+```javascript
+  actions: {
+    hello: {
+      queue: {
+        retry: true, // Using rabbitmq default requeue logic
+      },
+      // ...
+    },
+  },
+```
+
+## Retry using *rabbitmq-delayed-message-exchange* plugins
+**REQUIRE [rabbitmq-delayed-message-exchange](https://github.com/rabbitmq/rabbitmq-delayed-message-exchange) plugin to be install and enabled in RabbitMQ**
+
+[Example RabbitMQ dockerfile](examples/rabbitmq/Dockerfile)
+
+Example:
+```javascript
+  actions: {
+    hello: {
+      queue: {
+        retryExchangeAssert: {
+          durable: true, // (boolean) if true, the exchange will survive broker restarts. Defaults to true.
+          autoDelete: false, // (boolean) if true, the exchange will be destroyed once the number of bindings for which it is the source drop to zero. Defaults to false.
+          alternateExchange: null, // (string) an exchange to send messages to if this exchange can’t route them to any queues.
+          arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+          },
+        },
+        retry: {
+          max_retry: 3, // Max retry count, 3 mean if the first time failed, it will try 3 more times
+          delay: (retry_count) => { // Number of miliseconds delay between each retry, could be a number or a function(retry_count) that return a number
+            return retry_count * 1000;
+          },
+        },
+      },
+      // ...
+    },
+  },
+```
+
+# Plugin Configuration
+
+## Mixin configuration
+```javascript
+connection: "amqp://localhost", // (String|Object) Required. connection string or object, passed to amqplib.connect (You can also set this on broker.createService settings.amqp.connection parameter)
+asyncActions: true, // (Boolean) Optional, default: false. Enable auto generate .async version for actions
+localPublisher: false, // (Boolean) Optional, default: false. Enable/Disable call this.actions.callAsync to call remote async
+```
+
+## Action configuration
+```javascript
+queue: {
+  amqp: {
+    queueAssert: { // Options for job queue (Ref: http://www.squaremobius.net/amqp.node/channel_api.html#channel_assertQueue)
+      exclusive: false, // (boolean) if true, scopes the queue to the connection (defaults to false)
+      durable: true, // (boolean) if true, the queue will survive broker restarts, modulo the effects of exclusive and autoDelete; this defaults to true if not supplied, unlike the others
+      autoDelete: false, // (boolean) if true, the queue will be deleted when the number of consumers drops to zero (defaults to false)
+      arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+        "x-message-deduplication": true, // Preserve for deduplication feature
+      },
+    },
+    retryExchangeAssert: { // Options for retry exchange (Ref: http://www.squaremobius.net/amqp.node/channel_api.html#channel_assertExchange)
+      durable: true, // (boolean) if true, the exchange will survive broker restarts. Defaults to true.
+      autoDelete: false, // (boolean) if true, the exchange will be destroyed once the number of bindings for which it is the source drop to zero. Defaults to false.
+      alternateExchange: null, // (string) an exchange to send messages to if this exchange can’t route them to any queues.
+      arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+        "arguments.x-delayed-type": "direct", // Set by this plugin
+        "x-message-deduplication": true, // Preserve for deduplication feature
+      },
+    },
+    consume: { // Options for consumer (Ref: http://www.squaremobius.net/amqp.node/channel_api.html#channel_consume)
+      noAck: false,
+    },
+    prefetch: 0, // Set the prefetch count for this channel
+  },
+  retry: { // (Boolean|Object) : Enable or disable retry option
+    max_retry: 0, // Max retry count
+    delay: 0, // Delay in ms each retry
+  },
+}
+```
+
 # Examples
 
 Take a look at [examples](examples) folder for more examples
@@ -122,9 +210,10 @@ Take a look at [examples](examples) folder for more examples
 
 # Roadmap
 
+- [x] Implement retry logic for rabbitmq queue
 - [ ] Graceful shutdown queue
 - [ ] Allow deduplicate message
-- [ ] Implement retry logic for rabbitmq queue
+- [ ] Test & Coverage
 
 # License
 
