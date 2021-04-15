@@ -158,6 +158,14 @@ Example:
   },
 ```
 
+# Deduplicate jobs
+This plugin allow you to avoid dupplicate task using `dedupHash` option that can be number, string or function(ctx) that return a number or string
+To get this feature to work, you have to install [rabbitmq-message-deduplication](https://github.com/noxdafox/rabbitmq-message-deduplication) plugin.
+And please aware that using this feature may cause decrease in queue performance
+
+[Example RabbitMQ dockerfile](examples/rabbitmq/Dockerfile)
+[Example plugin usage with deduplication](examples/deduplication)
+
 # Plugin Configuration
 
 ## Mixin configuration
@@ -196,6 +204,7 @@ queue: {
     max_retry: 0, // Max retry count
     delay: 0, // Delay in ms each retry
   },
+  dedupHash: null, // (Number|String|Function(ctx)) Hash or function to calculate hash to deduplicate task
 }
 ```
 
@@ -209,8 +218,8 @@ Take a look at [examples](examples) folder for more examples
 # Roadmap
 
 - [x] Implement retry logic for rabbitmq queue
+- [x] Allow deduplicate message
 - [ ] Graceful shutdown queue
-- [ ] Allow deduplicate message
 - [ ] Test & Coverage
 
 # License
