@@ -9,7 +9,6 @@ let broker = new ServiceBroker({
 const queueMixin = QueueMixin({
   connection: "amqp://localhost",
   asyncActions: true, // Enable auto generate .async version for actions
-  localPublisher: true, // Enable/Disable call this.actions.callAsync to call remote async
 });
 
 broker.createService({
@@ -27,25 +26,22 @@ broker.createService({
   },
 
   async started() {
-    // await broker.waitForServices({ name: "consumer", version: 1 });
+    await broker.waitForServices({ name: "consumer", version: 1 });
 
-    let name = 1;
+    let name = "repeat_name";
     setInterval(async () => {
-      const response = await this.actions.callAsync({
-        // remote async action name
-        action: "v1.consumer.hello",
+      const response = await broker.call("v1.consumer.hello.async", {
         // `params` is the real param will be passed to original action
         params: {
           name,
         },
         // `options` is the real options will be passed to original action
         options: {
-          timeout: 2000,
+          timeout: 12000,
         },
       });
       this.logger.info(`[PUBLISHER] PID: ${process.pid} Called job with name=${name} response=${JSON.stringify(response)}`);
-      name++;
-    }, 2000);
+    }, 200);
   }
 });
 

@@ -9,7 +9,6 @@ let broker = new ServiceBroker({
 const queueMixin = QueueMixin({
   connection: "amqp://localhost",
   asyncActions: true, // Enable auto generate .async version for actions
-  localPublisher: false, // Enable/Disable call this.actions.callAsync to call remote async
 });
 
 broker.createService({
@@ -30,14 +29,17 @@ broker.createService({
     hello: {
       queue: { // Enable queue for this action
         // Options for AMQP queue
-        channel: {
-          assert: {
+        amqp: {
+          queueAssert: {
             durable: true,
+          },
+          consume: {
+            noAck: false,
           },
           prefetch: 0,
         },
-        consume: {
-          noAck: false,
+        dedupHash: (ctx) => {
+          return ctx.params.name;
         },
       },
       params: {
@@ -49,7 +51,7 @@ broker.createService({
           setTimeout(() => {
             this.logger.info(`[CONSUMER] PID: ${process.pid} Processed job with name=${ctx.params.name}`);
             return resolve(`hello ${ctx.params.name}`);
-          }, 1000);
+          }, 10000);
         });
       },
     },

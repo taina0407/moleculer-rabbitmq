@@ -1,5 +1,7 @@
+const Crypto = require("crypto");
 const Amqplib = require("amqplib");
-const Lodash = require("lodash");
+const MergeDeep = require("merge-deep");
+const Deep = require("deep-get-set");
 const {
   MoleculerError,
   ServiceSchemaError,
@@ -10,18 +12,34 @@ const DEFAULT_MESSAGE_OPTIONS = {
 };
 
 const DEFAULT_QUEUE_OPTIONS = {
-  channel: {
-    assert: {
-      durable: true,
-      // arguments: {
-      //   "x-message-deduplication": true,
-      // },
+  amqp: {
+    queueAssert: {
+      exclusive: false, // (boolean) if true, scopes the queue to the connection (defaults to false)
+      durable: true, // (boolean) if true, the queue will survive broker restarts, modulo the effects of exclusive and autoDelete; this defaults to true if not supplied, unlike the others
+      autoDelete: false, // (boolean) if true, the queue will be deleted when the number of consumers drops to zero (defaults to false)
+      arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+        "x-message-deduplication": true,
+      },
+    },
+    retryExchangeAssert: {
+      durable: true, // (boolean) if true, the exchange will survive broker restarts. Defaults to true.
+      autoDelete: false, // (boolean) if true, the exchange will be destroyed once the number of bindings for which it is the source drop to zero. Defaults to false.
+      alternateExchange: null, // (string) an exchange to send messages to if this exchange can’t route them to any queues.
+      arguments: { // additional arguments, usually parameters for some kind of broker-specific extension e.g., high availability, TTL
+        "x-delayed-type": "direct",
+        "x-message-deduplication": true,
+      },
+    },
+    consume: {
+      noAck: false,
     },
     prefetch: 0,
   },
-  consume: {
-    noAck: false,
+  retry: {
+    max_retry: 0,
+    delay: 0,
   },
+  dedupHash: null,
 };
 
 const ACTION_OPTIONS_VALIDATOR = {
@@ -43,11 +61,15 @@ const initAMQPQueues = function (schema) {
     if (schema.actions[originActionName] && schema.actions[originActionName].queue) {
       const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${originActionName}`;
 
-      const queueOption = Lodash.defaultsDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
+      const queueOption = MergeDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
 
       this.$amqpOptions[queueName] = {
         options: queueOption,
-        async consumer(channel, msg) {
+        async consumeHandler(channel, msg) {
+          const {
+            retry: retryOptions,
+          } = queueOption;
+
           let messageData;
           try {
             messageData = JSON.parse(msg.content.toString()) || {};
@@ -57,18 +79,44 @@ const initAMQPQueues = function (schema) {
 
           const actionName = `${this.version ? `v${this.version}.` : ""}${this.name}.${originActionName}`;
           const actionParams = messageData.params || {};
-          const actionOptions = Lodash.defaultsDeep({}, messageData.options);
+          const actionOptions = MergeDeep({}, messageData.options);
 
           try {
             await this.broker.call(actionName, actionParams, actionOptions);
             return channel.ack(msg);
           } catch (error) {
-            this.logger.error(error);
-            // if (msg.fields && msg.fields.redelivered) {
-            //   return channel.reject(msg, false);
-            // }
+            try {
+              if (retryOptions === true) {
+                await channel.nack(msg, true, true);
+              } else if (retryOptions && retryOptions.max_retry > 0) {
+                await channel.nack(msg, true, false);
+                const retry_count = (Deep(msg, "properties.headers.x-retries") || 0) + 1;
+                let retry_delay = 0;
+                if (typeof retryOptions.delay === "function") {
+                  retry_delay = retryOptions.delay(retry_count);
+                } else if (typeof retryOptions.delay === "number") {
+                  retry_delay = retryOptions.delay;
+                }
 
-            return channel.nack(msg);
+                if (retry_count <= retryOptions.max_retry) {
+                  error.message += ` (Retring retry_count=${retry_count} in ${retry_delay} ms)`;
+                  await channel.publish(`${queueName}.retry`, queueName, msg.content, {
+                    headers: {
+                      "x-retries": retry_count,
+                      "x-delay": retry_delay,
+                    },
+                  });
+                } else {
+                  error.message += ` (Reached max_retry=${retryOptions.max_retry}, throwing away)`;
+                }
+              } else {
+                await channel.nack(msg, true, false);
+              }
+            } catch (retryError) {
+              this.logger.error(retryError);
+            }
+
+            this.logger.error(error);
           }
         },
       };
@@ -83,41 +131,9 @@ const initAMQPActions = function (schema) {
     schema.actions = {};
   }
 
-  if (schema.settings.amqp.localPublisher) {
-    schema.actions.callAsync = {
-      visibility: "private",
-      params: {
-        action: "string|empty:false|optional:false",
-        params: "object|strict:false|optional",
-        options: ACTION_OPTIONS_VALIDATOR,
-        headers: "object|strict:false|optional",
-      },
-      timeout: 10000,
-      retryPolicy: {
-        enabled: true,
-        retries: 2,
-      },
-      async handler(ctx) {
-        const queueName = `amqp.${ctx.params.action}`;
-
-        return this.sendAMQPMessage(queueName, {
-          params: ctx.params.params,
-          options: ctx.params.options,
-        }, {
-          headers: {
-            ...ctx.headers,
-            // "x-deduplication-header": ObjectHash(ctx.params),
-          },
-        });
-      },
-    };
-  }
-
-  if (schema.settings.amqp.asyncActions) {
+  if (Deep(schema, "settings.amqp.asyncActions")) {
     Object.keys(schema.actions).forEach((actionName) => {
       if (schema.actions[actionName] && schema.actions[actionName].queue) {
-        const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${actionName}`;
-
         const asyncParams = {
           options: ACTION_OPTIONS_VALIDATOR,
           headers: "object|strict:false|optional",
@@ -137,14 +153,24 @@ const initAMQPActions = function (schema) {
           },
           params: asyncParams,
           async handler(ctx) {
+            const queueName = `amqp.${ctx.params.action}`;
+            const dedupeHash = Deep(this.$amqpOptions, [queueName, "options", "dedupHash"]);
+            const headers = ctx.headers || {};
+            if (typeof dedupeHash === "number" || typeof dedupeHash === "string") {
+              headers["x-deduplication-header"] = String(dedupeHash);
+            } else if (typeof dedupeHash === "function") {
+              headers["x-deduplication-header"] = dedupeHash({
+                ...ctx,
+                params: ctx.params.params,
+                options: ctx.params.options,
+              });
+            }
+
             return this.sendAMQPMessage(queueName, {
               params: ctx.params.params,
               options: ctx.params.options,
             }, {
-              headers: {
-                ...ctx.headers,
-                // "x-deduplication-header": ObjectHash(ctx.params),
-              }
+              headers,
             });
           },
         };
@@ -159,39 +185,46 @@ module.exports = (options) => ({
   name: "moleculer-rabbitmq",
 
   methods: {
-    async assertAMQPQueue(name) {
-      if (!this.$amqpQueues[name]) {
+    async assertAMQPQueue(queueName) {
+      if (!this.$amqpQueues[queueName]) {
         const {
-          channel: channelOptions = {},
-        } = this.$amqpOptions[name] || {};
+          options: {
+            amqp: amqpOptions = {},
+          } = {},
+        } = this.$amqpOptions[queueName] || {};
 
         try {
           const channel = await this.$amqpConnection.createChannel();
           channel.on("close", () => {
-            delete this.$amqpQueues[name];
+            delete this.$amqpQueues[queueName];
           });
           channel.on("error", (err) => {
             this.logger.error(err);
           });
 
-          await channel.assertQueue(name, channelOptions.assert);
+          await channel.assertQueue(queueName, amqpOptions.queueAssert);
 
-          if (channelOptions.prefetch != null) {
-            channel.prefetch(channelOptions.prefetch);
+          if (amqpOptions.prefetch != null) {
+            channel.prefetch(amqpOptions.prefetch);
           }
 
-          this.$amqpQueues[name] = channel;
+          if (amqpOptions.retryExchangeAssert) {
+            await channel.assertExchange(`${queueName}.retry`, "x-delayed-message", amqpOptions.retryExchangeAssert);
+            await channel.bindQueue(queueName, `${queueName}.retry`, queueName);
+          }
+
+          this.$amqpQueues[queueName] = channel;
         } catch (err) {
           this.logger.error(err);
           throw new MoleculerError("Unable to start queue");
         }
       }
 
-      return this.$amqpQueues[name];
+      return this.$amqpQueues[queueName];
     },
 
     async sendAMQPMessage(name, message, options) {
-      const messageOption = Lodash.defaultsDeep({}, options, DEFAULT_MESSAGE_OPTIONS);
+      const messageOption = MergeDeep({}, options, DEFAULT_MESSAGE_OPTIONS);
       let queue = await this.assertAMQPQueue(name);
       return queue.sendToQueue(name, Buffer.from(JSON.stringify(message)), messageOption);
     },
@@ -199,12 +232,12 @@ module.exports = (options) => ({
     async initAMQPConsumers() {
       Object.entries(this.$amqpOptions).forEach(async ([queueName, queueOption]) => {
         const {
-          consumer,
+          consumeHandler,
           consume: consumeOptions,
         } = queueOption;
 
         const amqpChannel = await this.assertAMQPQueue(queueName);
-        amqpChannel.consume(queueName, consumer.bind(this, amqpChannel), consumeOptions);
+        amqpChannel.consume(queueName, consumeHandler.bind(this, amqpChannel), consumeOptions);
       });
     },
   },
@@ -218,10 +251,9 @@ module.exports = (options) => ({
       schema.settings = {};
     }
 
-    schema.settings.amqp = Lodash.defaultsDeep({}, schema.settings.amqp, options, {
+    schema.settings.amqp = MergeDeep({}, schema.settings.amqp, options, {
       connection: "amqp://localhost",
       asyncActions: true,
-      localPublisher: false,
     });
 
     initAMQPQueues.bind(this)(schema);
@@ -230,7 +262,7 @@ module.exports = (options) => ({
   },
 
   async started() {
-    if (!this.settings.amqp || !this.settings.amqp.connection) {
+    if (!Deep(this.settings, "amqp.connection")) {
       this.logger.warn(`${this.version ? `v${this.version}.` : ""}${this.name} is disabled because of empty "amqp.connection" setting`);
     }
 
