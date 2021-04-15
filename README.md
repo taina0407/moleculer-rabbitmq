@@ -18,7 +18,6 @@ const QueueMixin = require("moleculer-rabbitmq");
 const queueMixin = QueueMixin({
   connection: "amqp://localhost",
   asyncActions: true, // Enable auto generate .async version for actions
-  localPublisher: false, // Enable/Disable call this.actions.callAsync to call remote async
 });
 
 broker.createService({
@@ -76,7 +75,6 @@ const QueueMixin = require("moleculer-rabbitmq");
 const queueMixin = QueueMixin({
   connection: "amqp://localhost",
   asyncActions: true, // Enable auto generate .async version for actions
-  localPublisher: false, // Enable/Disable call this.actions.callAsync to call remote async
 });
 
 broker.createService({
@@ -166,7 +164,6 @@ Example:
 ```javascript
 connection: "amqp://localhost", // (String|Object) Required. connection string or object, passed to amqplib.connect (You can also set this on broker.createService settings.amqp.connection parameter)
 asyncActions: true, // (Boolean) Optional, default: false. Enable auto generate .async version for actions
-localPublisher: false, // (Boolean) Optional, default: false. Enable/Disable call this.actions.callAsync to call remote async
 ```
 
 ## Action configuration
@@ -205,8 +202,9 @@ queue: {
 # Examples
 
 Take a look at [examples](examples) folder for more examples
-- [Simple example](examples/simple) : Basic example
-- [Local publisher example](examples/localPublisher) : Example with local publisher (allow publisher to create task event when consumer services is offline). Warning: if there are queue configuration difference between publisher and consumer, the queue configuration will be set follow the first one started. Will improve this in future update or please make a PR if you wanna.
+- [Simple example](examples/simple) : Example for basic usage
+- [Retry example](examples/retry) : Example with retry logic
+- [Deduplication example](examples/deduplication) : Example with deduplicate message feature
 
 # Roadmap
 

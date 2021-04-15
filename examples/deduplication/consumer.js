@@ -38,6 +38,9 @@ broker.createService({
           },
           prefetch: 0,
         },
+        dedupHash: (ctx) => {
+          return ctx.params.name;
+        },
       },
       params: {
         name: "string|convert:true|empty:false",
@@ -48,7 +51,7 @@ broker.createService({
           setTimeout(() => {
             this.logger.info(`[CONSUMER] PID: ${process.pid} Processed job with name=${ctx.params.name}`);
             return resolve(`hello ${ctx.params.name}`);
-          }, 1000);
+          }, 10000);
         });
       },
     },

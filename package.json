@@ -22,11 +22,15 @@
   "homepage": "https://github.com/taina0407/moleculer-rabbitmq#readme",
   "devDependencies": {
     "eslint": "^7.22.0",
+    "moleculer": "^0.14.x",
     "moleculer-repl": "^0.6.4"
   },
   "dependencies": {
     "amqplib": "^0.7.1",
-    "lodash": "^4.17.21",
-    "moleculer": "^0.14.12"
+    "deep-get-set": "^1.1.1",
+    "merge-deep": "^3.0.3"
+  },
+  "peerDependencies": {
+    "moleculer": "^0.14.x"
   }
 }

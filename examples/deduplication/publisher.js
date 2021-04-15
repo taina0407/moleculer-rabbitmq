@@ -28,7 +28,7 @@ broker.createService({
   async started() {
     await broker.waitForServices({ name: "consumer", version: 1 });
 
-    let name = 1;
+    let name = "repeat_name";
     setInterval(async () => {
       const response = await broker.call("v1.consumer.hello.async", {
         // `params` is the real param will be passed to original action
@@ -37,12 +37,11 @@ broker.createService({
         },
         // `options` is the real options will be passed to original action
         options: {
-          timeout: 2000,
+          timeout: 12000,
         },
       });
       this.logger.info(`[PUBLISHER] PID: ${process.pid} Called job with name=${name} response=${JSON.stringify(response)}`);
-      name++;
-    }, 2000);
+    }, 200);
   }
 });
 

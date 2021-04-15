@@ -9,7 +9,6 @@ let broker = new ServiceBroker({
 const queueMixin = QueueMixin({
   connection: "amqp://localhost",
   asyncActions: true, // Enable auto generate .async version for actions
-  localPublisher: false, // Enable/Disable call this.actions.callAsync to call remote async
 });
 
 broker.createService({
