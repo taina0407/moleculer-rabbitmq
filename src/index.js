@@ -56,16 +56,36 @@ const ACTION_OPTIONS_VALIDATOR = {
   optional: true,
 };
 
+const gracefulShutdown = async function () {
+  isShuttingDown = true;
+
+  Object.keys(this.$amqpQueues).forEach((queueName) => {
+    const { channel, options } = this.$amqpQueues[queueName] || {};
+    channel && channel.cancel(Deep(options, "amqp.consume.consumerTag"));
+  });
+};
+
+const closeConnection = async function () {
+  Object.keys(this.$amqpQueues).forEach((queueName) => {
+    const { channel } = this.$amqpQueues[queueName];
+    channel && channel.close();
+  });
+
+  this.$amqpConnection && await this.$amqpConnection.close();
+};
+
 const initAMQPQueues = function (schema) {
   Object.keys(schema.actions || {}).forEach((originActionName) => {
     if (schema.actions[originActionName] && schema.actions[originActionName].queue) {
       const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${originActionName}`;
 
       const queueOption = MergeDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
+      Deep(queueOption, "amqp.consume.consumerTag", Crypto.randomBytes(16).toString("hex"));
 
-      this.$amqpOptions[queueName] = {
+      this.$amqpQueues[queueName] = {
         options: queueOption,
         async consumeHandler(channel, msg) {
+          messagesBeingProcessed++;
           const {
             retry: retryOptions,
           } = queueOption;
@@ -117,6 +137,11 @@ const initAMQPQueues = function (schema) {
             }
 
             this.logger.error(error);
+          } finally {
+            messagesBeingProcessed--;
+            if (isShuttingDown && messagesBeingProcessed == 0) {
+              await closeConnection.call(this);
+            }
           }
         },
       };
@@ -154,7 +179,7 @@ const initAMQPActions = function (schema) {
           },
           params: asyncParams,
           async handler(ctx) {
-            const dedupeHash = Deep(this.$amqpOptions, [queueName, "options", "dedupHash"]);
+            const dedupeHash = Deep(this.$amqpQueues, [queueName, "options", "dedupHash"]);
             const headers = ctx.headers || {};
             if (typeof dedupeHash === "number" || typeof dedupeHash === "string") {
               headers["x-deduplication-header"] = String(dedupeHash);
@@ -181,22 +206,25 @@ const initAMQPActions = function (schema) {
   return schema;
 };
 
+let isShuttingDown = false;
+let messagesBeingProcessed = 0;
+
 module.exports = (options) => ({
   name: "moleculer-rabbitmq",
 
   methods: {
     async assertAMQPQueue(queueName) {
-      if (!this.$amqpQueues[queueName]) {
+      if (!Deep(this.$amqpQueues, [queueName, "channel"])) {
         const {
           options: {
             amqp: amqpOptions = {},
           } = {},
-        } = this.$amqpOptions[queueName] || {};
+        } = this.$amqpQueues[queueName] || {};
 
         try {
           const channel = await this.$amqpConnection.createChannel();
           channel.on("close", () => {
-            delete this.$amqpQueues[queueName];
+            Deep(this.$amqpQueues, [queueName, "channel"], null);
           });
           channel.on("error", (err) => {
             this.logger.error(err);
@@ -213,14 +241,14 @@ module.exports = (options) => ({
             await channel.bindQueue(queueName, `${queueName}.retry`, queueName);
           }
 
-          this.$amqpQueues[queueName] = channel;
+          Deep(this.$amqpQueues, [queueName, "channel"], channel);
         } catch (err) {
           this.logger.error(err);
           throw new MoleculerError("Unable to start queue");
         }
       }
 
-      return this.$amqpQueues[queueName];
+      return Deep(this.$amqpQueues, [queueName, "channel"]);
     },
 
     async sendAMQPMessage(name, message, options) {
@@ -230,11 +258,13 @@ module.exports = (options) => ({
     },
 
     async initAMQPConsumers() {
-      Object.entries(this.$amqpOptions).forEach(async ([queueName, queueOption]) => {
+      Object.entries(this.$amqpQueues).forEach(async ([queueName, queue]) => {
         const {
           consumeHandler,
-          consume: consumeOptions,
-        } = queueOption;
+          options: {
+            consume: consumeOptions,
+          } = {},
+        } = queue;
 
         const amqpChannel = await this.assertAMQPQueue(queueName);
         amqpChannel.consume(queueName, consumeHandler.bind(this, amqpChannel), consumeOptions);
@@ -245,7 +275,6 @@ module.exports = (options) => ({
   merged(schema) {
     this.$amqpConnection = null;
     this.$amqpQueues = {};
-    this.$amqpOptions = {};
 
     if (!schema.settings) {
       schema.settings = {};
@@ -276,6 +305,11 @@ module.exports = (options) => ({
       this.logger.error(ex);
       throw new MoleculerError("Unable to connect to AMQP");
     }
+
+    process.on("SIGTERM", gracefulShutdown.bind(this));
+    process.on("SIGINT", gracefulShutdown.bind(this));
+    process.on("SIGUSR1", gracefulShutdown.bind(this));
+    process.on("SIGUSR2", gracefulShutdown.bind(this));
 
     try {
       await this.initAMQPConsumers();
