@@ -214,12 +214,13 @@ Take a look at [examples](examples) folder for more examples
 - [Simple example](examples/simple) : Example for basic usage
 - [Retry example](examples/retry) : Example with retry logic
 - [Deduplication example](examples/deduplication) : Example with deduplicate message feature
+- [Graceful shutdown example](examples/graceful_shutdown) : Example with moleculer graceful shutdown feature
 
-# Roadmap
+# Checklist
 
 - [x] Implement retry logic for rabbitmq queue
 - [x] Allow deduplicate message
-- [ ] Graceful shutdown queue
+- [X] Graceful shutdown queue
 - [ ] Test & Coverage
 
 # License
