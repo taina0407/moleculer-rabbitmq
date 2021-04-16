@@ -145,6 +145,7 @@ const initAMQPActions = function (schema) {
           };
         }
 
+        const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${actionName}`;
         schema.actions[`${actionName}.async`] = {
           timeout: 10000,
           retryPolicy: {
@@ -153,7 +154,6 @@ const initAMQPActions = function (schema) {
           },
           params: asyncParams,
           async handler(ctx) {
-            const queueName = `amqp.${ctx.params.action}`;
             const dedupeHash = Deep(this.$amqpOptions, [queueName, "options", "dedupHash"]);
             const headers = ctx.headers || {};
             if (typeof dedupeHash === "number" || typeof dedupeHash === "string") {
