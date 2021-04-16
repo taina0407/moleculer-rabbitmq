@@ -1,4 +1,10 @@
-## v1.0.0
+## v1.1.0
+- [Add]
+  - Support moleculer graceful shutdown using serviceBroker.tracking option
+- [Fix]
+  - Fix critical bug that cause queue not working on v1.0.0
+
+## v1.0.0 (DO NOT USE)
 - [Breaking Change]
   - Queues in RabbitMQ created by v0.1.0 must be re-create because retry/deduplication feature cause queue configuration changed
   - Rename configuration to make it more relevant with amqplib configuration, please follow README to validate your configuration
