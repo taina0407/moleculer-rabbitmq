@@ -1,3 +1,7 @@
+## v1.1.1
+- [Fix]
+  - Fix peerDependencies moleculer
+
 ## v1.1.0
 - [Add]
   - Support moleculer graceful shutdown using serviceBroker.tracking option
