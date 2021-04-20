@@ -1,3 +1,7 @@
+## v1.1.2
+- [Fix]
+  - Fix bug using merge-deep instead of defaults-deep
+
 ## v1.1.1
 - [Fix]
   - Fix peerDependencies moleculer
