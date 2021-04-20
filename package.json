@@ -30,7 +30,7 @@
   "dependencies": {
     "amqplib": "^0.7.1",
     "deep-get-set": "^1.1.1",
-    "merge-deep": "^3.0.3"
+    "defaults-deep": "^0.2.4"
   },
   "peerDependencies": {
     "moleculer": "^0.12.0 || ^0.13.0 || ^0.14.0"
