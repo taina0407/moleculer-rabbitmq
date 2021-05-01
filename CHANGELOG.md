@@ -1,3 +1,7 @@
+## v1.1.3
+- [Fix]
+  - Fix bug graceful shutdown not cancel consumer
+
 ## v1.1.2
 - [Fix]
   - Fix bug using merge-deep instead of defaults-deep
