@@ -1,4 +1,3 @@
-const Crypto = require("crypto");
 const Amqplib = require("amqplib");
 const DefaultDeep = require("defaults-deep");
 const Deep = require("deep-get-set");
@@ -59,9 +58,10 @@ const ACTION_OPTIONS_VALIDATOR = {
 const gracefulShutdown = async function () {
   isShuttingDown = true;
 
-  Object.keys(this.$amqpQueues).forEach((queueName) => {
-    const { channel, options } = this.$amqpQueues[queueName] || {};
-    channel && channel.cancel(Deep(options, "amqp.consume.consumerTag"));
+  Object.keys(this.$amqpQueues).forEach(async (queueName) => {
+    const { channel, consumerTag } = this.$amqpQueues[queueName] || {};
+
+    channel && consumerTag && await channel.cancel(consumerTag);
   });
 };
 
@@ -80,7 +80,6 @@ const initAMQPQueues = function (schema) {
       const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${originActionName}`;
 
       const queueOption = DefaultDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
-      Deep(queueOption, "amqp.consume.consumerTag", Crypto.randomBytes(16).toString("hex"));
 
       this.$amqpQueues[queueName] = {
         options: queueOption,
@@ -267,7 +266,10 @@ module.exports = (options) => ({
         } = queue;
 
         const amqpChannel = await this.assertAMQPQueue(queueName);
-        amqpChannel.consume(queueName, consumeHandler.bind(this, amqpChannel), consumeOptions);
+        const {
+          consumerTag,
+        } = await amqpChannel.consume(queueName, consumeHandler.bind(this, amqpChannel), consumeOptions);
+        this.$amqpQueues[queueName].consumerTag = consumerTag;
       });
     },
   },
