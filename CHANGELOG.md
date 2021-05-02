@@ -1,3 +1,7 @@
+## v1.1.4
+- [Fix]
+  - Fix bug message headers is clear when retry
+
 ## v1.1.3
 - [Fix]
   - Fix bug graceful shutdown not cancel consumer
