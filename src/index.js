@@ -119,11 +119,11 @@ const initAMQPQueues = function (schema) {
 
                 if (retry_count <= retryOptions.max_retry) {
                   error.message += ` (Retring retry_count=${retry_count} in ${retry_delay} ms)`;
+                  const headers = Deep(msg, "properties.headers") || {};
+                  headers["x-retries"] = retry_count;
+                  headers["x-delay"] = retry_delay;
                   await channel.publish(`${queueName}.retry`, queueName, msg.content, {
-                    headers: {
-                      "x-retries": retry_count,
-                      "x-delay": retry_delay,
-                    },
+                    headers,
                   });
                 } else {
                   error.message += ` (Reached max_retry=${retryOptions.max_retry}, throwing away)`;
