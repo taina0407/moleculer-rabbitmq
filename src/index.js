@@ -131,11 +131,10 @@ const initAMQPQueues = function (schema) {
               } else {
                 await channel.nack(msg, true, false);
               }
+              this.logger.error("[AMQP] consumer throw error", error);
             } catch (retryError) {
-              this.logger.error(retryError);
+              this.logger.error("[AMQP] consumer retry message failed", retryError);
             }
-
-            this.logger.error(error);
           } finally {
             messagesBeingProcessed--;
             if (isShuttingDown && messagesBeingProcessed == 0) {
@@ -226,7 +225,7 @@ module.exports = (options) => ({
             Deep(this.$amqpQueues, [queueName, "channel"], null);
           });
           channel.on("error", (err) => {
-            this.logger.error(err);
+            this.logger.error("[AMQP] channel error", err);
           });
 
           await channel.assertQueue(queueName, amqpOptions.queueAssert);
@@ -242,7 +241,7 @@ module.exports = (options) => ({
 
           Deep(this.$amqpQueues, [queueName, "channel"], channel);
         } catch (err) {
-          this.logger.error(err);
+          this.logger.error("[AMQP] assert amqp queue error", err);
           throw new MoleculerError("Unable to start queue");
         }
       }
@@ -295,6 +294,7 @@ module.exports = (options) => ({
   async started() {
     if (!Deep(this.settings, "amqp.connection")) {
       this.logger.warn(`${this.version ? `v${this.version}.` : ""}${this.name} is disabled because of empty "amqp.connection" setting`);
+      return;
     }
 
     if (!["string", "object"].includes(typeof this.settings.amqp.connection)) {
@@ -304,8 +304,8 @@ module.exports = (options) => ({
     try {
       this.$amqpConnection = await Amqplib.connect(this.settings.amqp.connection);
     } catch (ex) {
-      this.logger.error(ex);
-      throw new MoleculerError("Unable to connect to AMQP");
+      this.logger.error("[AMQP] Unable to connect to rabbitmq", ex);
+      throw new MoleculerError("[AMQP] Unable to connect to rabbitmq");
     }
 
     process.on("SIGTERM", gracefulShutdown.bind(this));
