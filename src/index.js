@@ -93,7 +93,8 @@ const initAMQPQueues = function (schema) {
           try {
             messageData = JSON.parse(msg.content.toString()) || {};
           } catch (error) {
-            return channel.reject(msg, false);
+            this.logger.error("[AMQP] parse message content failed", error);
+            return await channel.reject(msg, false);
           }
 
           const actionName = `${this.version ? `v${this.version}.` : ""}${this.name}.${originActionName}`;
@@ -102,7 +103,7 @@ const initAMQPQueues = function (schema) {
 
           try {
             await this.broker.call(actionName, actionParams, actionOptions);
-            return channel.ack(msg);
+            return await channel.ack(msg);
           } catch (error) {
             try {
               if (retryOptions === true) {
