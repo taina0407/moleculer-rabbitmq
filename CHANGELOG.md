@@ -1,3 +1,7 @@
+## v1.1.8
+- [Bug]
+  - Fix bug calling logger in incorrect this
+
 ## v1.1.7
 - [Security]
   - Replace defaults-deep with lodash.defaultsdeep to avoid Prototype pollution attack
