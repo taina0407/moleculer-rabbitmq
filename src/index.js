@@ -1,5 +1,5 @@
 const Amqplib = require("amqplib");
-const DefaultDeep = require("defaults-deep");
+const DefaultsDeep = require("lodash.defaultsdeep");
 const Deep = require("deep-get-set");
 const {
   MoleculerError,
@@ -79,7 +79,7 @@ const initAMQPQueues = function (schema) {
     if (schema.actions[originActionName] && schema.actions[originActionName].queue) {
       const queueName = `amqp.${schema.version ? `v${schema.version}.` : ""}${schema.name}.${originActionName}`;
 
-      const queueOption = DefaultDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
+      const queueOption = DefaultsDeep({}, schema.actions[originActionName].queue, DEFAULT_QUEUE_OPTIONS);
 
       this.$amqpQueues[queueName] = {
         options: queueOption,
@@ -99,7 +99,7 @@ const initAMQPQueues = function (schema) {
 
           const actionName = `${this.version ? `v${this.version}.` : ""}${this.name}.${originActionName}`;
           const actionParams = messageData.params || {};
-          const actionOptions = DefaultDeep({}, messageData.options);
+          const actionOptions = DefaultsDeep({}, messageData.options);
 
           try {
             await this.broker.call(actionName, actionParams, actionOptions);
@@ -281,7 +281,7 @@ module.exports = (options) => ({
     },
 
     async sendAMQPMessage(name, message, options) {
-      const messageOption = DefaultDeep({}, options, DEFAULT_MESSAGE_OPTIONS);
+      const messageOption = DefaultsDeep({}, options, DEFAULT_MESSAGE_OPTIONS);
       let queue = await this.assertAMQPQueue(name);
       return queue.sendToQueue(name, Buffer.from(JSON.stringify(message)), messageOption);
     },
@@ -312,7 +312,7 @@ module.exports = (options) => ({
       schema.settings = {};
     }
 
-    schema.settings.amqp = DefaultDeep({}, schema.settings.amqp, options, {
+    schema.settings.amqp = DefaultsDeep({}, schema.settings.amqp, options, {
       connection: "amqp://localhost",
       asyncActions: true,
     });

@@ -1,3 +1,7 @@
+## v1.1.7
+- [Security]
+  - Replace defaults-deep with lodash.defaultsdeep to avoid Prototype pollution attack
+
 ## v1.1.6
 - [Bug]
   - Fix bug not init amqp connection
