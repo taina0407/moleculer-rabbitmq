@@ -212,6 +212,33 @@ module.exports = (options) => ({
   name: "moleculer-rabbitmq",
 
   methods: {
+    async connectAMQP() {
+      try {
+        this.$amqpConnection = await Amqplib.connect(this.settings.amqp.connection);
+      } catch (ex) {
+        this.logger.error("[AMQP] Unable to connect to rabbitmq", ex);
+        throw new MoleculerError("[AMQP] Unable to connect to rabbitmq");
+      }
+
+      this.$amqpConnection.on("error", function (err) {
+        if (err.message !== "Connection closing") {
+          this.logger.error("[AMQP] connection error", err);
+          throw new MoleculerError("[AMQP] connection unhandled exception");
+        }
+      });
+      this.$amqpConnection.on("close", function () {
+        this.logger.error("[AMQP] connection is closed");
+        throw new MoleculerError("[AMQP] connection closed");
+      });
+
+      try {
+        await this.initAMQPConsumers();
+      } catch (ex) {
+        this.logger.error(ex);
+        throw new MoleculerError("[AMQP] Failed to init consumers");
+      }
+    },
+
     async assertAMQPQueue(queueName) {
       if (!Deep(this.$amqpQueues, [queueName, "channel"])) {
         const {
@@ -224,9 +251,12 @@ module.exports = (options) => ({
           const channel = await this.$amqpConnection.createChannel();
           channel.on("close", () => {
             Deep(this.$amqpQueues, [queueName, "channel"], null);
+            this.logger.error("[AMQP] channel closed");
+            throw new MoleculerError("[AMQP] channel closed");
           });
           channel.on("error", (err) => {
             this.logger.error("[AMQP] channel error", err);
+            throw new MoleculerError("[AMQP] channel unhandled exception");
           });
 
           await channel.assertQueue(queueName, amqpOptions.queueAssert);
@@ -313,12 +343,5 @@ module.exports = (options) => ({
     process.on("SIGINT", gracefulShutdown.bind(this));
     process.on("SIGUSR1", gracefulShutdown.bind(this));
     process.on("SIGUSR2", gracefulShutdown.bind(this));
-
-    try {
-      await this.initAMQPConsumers();
-    } catch (ex) {
-      this.logger.error(ex);
-      throw new MoleculerError("Failed to init AMQP consumers");
-    }
   }
 });
