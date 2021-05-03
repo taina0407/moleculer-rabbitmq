@@ -1,3 +1,7 @@
+## v1.1.6
+- [Bug]
+  - Fix bug not init amqp connection
+
 ## v1.1.5
 - [Bug]
   - Fix bug not await when calling channel.ack and channel.reject

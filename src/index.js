@@ -332,12 +332,7 @@ module.exports = (options) => ({
       throw new ServiceSchemaError("Setting amqp.connection must be connection string or object");
     }
 
-    try {
-      this.$amqpConnection = await Amqplib.connect(this.settings.amqp.connection);
-    } catch (ex) {
-      this.logger.error("[AMQP] Unable to connect to rabbitmq", ex);
-      throw new MoleculerError("[AMQP] Unable to connect to rabbitmq");
-    }
+    await this.connectAMQP();
 
     process.on("SIGTERM", gracefulShutdown.bind(this));
     process.on("SIGINT", gracefulShutdown.bind(this));
