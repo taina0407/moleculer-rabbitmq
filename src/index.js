@@ -213,33 +213,42 @@ module.exports = (options) => ({
 
   methods: {
     async connectAMQP() {
+      const {
+        settings,
+        logger,
+      } = this;
+
       try {
-        this.$amqpConnection = await Amqplib.connect(this.settings.amqp.connection);
+        this.$amqpConnection = await Amqplib.connect(settings.amqp.connection);
       } catch (ex) {
-        this.logger.error("[AMQP] Unable to connect to rabbitmq", ex);
+        logger.error("[AMQP] Unable to connect to rabbitmq", ex);
         throw new MoleculerError("[AMQP] Unable to connect to rabbitmq");
       }
 
       this.$amqpConnection.on("error", function (err) {
         if (err.message !== "Connection closing") {
-          this.logger.error("[AMQP] connection error", err);
+          logger.error("[AMQP] connection error", err);
           throw new MoleculerError("[AMQP] connection unhandled exception");
         }
       });
       this.$amqpConnection.on("close", function () {
-        this.logger.error("[AMQP] connection is closed");
+        logger.error("[AMQP] connection is closed");
         throw new MoleculerError("[AMQP] connection closed");
       });
 
       try {
         await this.initAMQPConsumers();
       } catch (ex) {
-        this.logger.error(ex);
+        logger.error(ex);
         throw new MoleculerError("[AMQP] Failed to init consumers");
       }
     },
 
     async assertAMQPQueue(queueName) {
+      const {
+        logger,
+      } = this;
+
       if (!Deep(this.$amqpQueues, [queueName, "channel"])) {
         const {
           options: {
@@ -251,11 +260,11 @@ module.exports = (options) => ({
           const channel = await this.$amqpConnection.createChannel();
           channel.on("close", () => {
             Deep(this.$amqpQueues, [queueName, "channel"], null);
-            this.logger.error("[AMQP] channel closed");
+            logger.error("[AMQP] channel closed");
             throw new MoleculerError("[AMQP] channel closed");
           });
           channel.on("error", (err) => {
-            this.logger.error("[AMQP] channel error", err);
+            logger.error("[AMQP] channel error", err);
             throw new MoleculerError("[AMQP] channel unhandled exception");
           });
 
@@ -272,7 +281,7 @@ module.exports = (options) => ({
 
           Deep(this.$amqpQueues, [queueName, "channel"], channel);
         } catch (err) {
-          this.logger.error("[AMQP] assert amqp queue error", err);
+          logger.error("[AMQP] assert amqp queue error", err);
           throw new MoleculerError("Unable to start queue");
         }
       }
