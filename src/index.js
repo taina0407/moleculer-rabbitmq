@@ -93,7 +93,8 @@ const initAMQPQueues = function (schema) {
           try {
             messageData = JSON.parse(msg.content.toString()) || {};
           } catch (error) {
-            return channel.reject(msg, false);
+            this.logger.error("[AMQP] parse message content failed", error);
+            return await channel.reject(msg, false);
           }
 
           const actionName = `${this.version ? `v${this.version}.` : ""}${this.name}.${originActionName}`;
@@ -102,7 +103,7 @@ const initAMQPQueues = function (schema) {
 
           try {
             await this.broker.call(actionName, actionParams, actionOptions);
-            return channel.ack(msg);
+            return await channel.ack(msg);
           } catch (error) {
             try {
               if (retryOptions === true) {
@@ -119,11 +120,11 @@ const initAMQPQueues = function (schema) {
 
                 if (retry_count <= retryOptions.max_retry) {
                   error.message += ` (Retring retry_count=${retry_count} in ${retry_delay} ms)`;
+                  const headers = Deep(msg, "properties.headers") || {};
+                  headers["x-retries"] = retry_count;
+                  headers["x-delay"] = retry_delay;
                   await channel.publish(`${queueName}.retry`, queueName, msg.content, {
-                    headers: {
-                      "x-retries": retry_count,
-                      "x-delay": retry_delay,
-                    },
+                    headers,
                   });
                 } else {
                   error.message += ` (Reached max_retry=${retryOptions.max_retry}, throwing away)`;
@@ -131,11 +132,10 @@ const initAMQPQueues = function (schema) {
               } else {
                 await channel.nack(msg, true, false);
               }
+              this.logger.error("[AMQP] consumer throw error", error);
             } catch (retryError) {
-              this.logger.error(retryError);
+              this.logger.error("[AMQP] consumer retry message failed", retryError);
             }
-
-            this.logger.error(error);
           } finally {
             messagesBeingProcessed--;
             if (isShuttingDown && messagesBeingProcessed == 0) {
@@ -212,6 +212,33 @@ module.exports = (options) => ({
   name: "moleculer-rabbitmq",
 
   methods: {
+    async connectAMQP() {
+      try {
+        this.$amqpConnection = await Amqplib.connect(this.settings.amqp.connection);
+      } catch (ex) {
+        this.logger.error("[AMQP] Unable to connect to rabbitmq", ex);
+        throw new MoleculerError("[AMQP] Unable to connect to rabbitmq");
+      }
+
+      this.$amqpConnection.on("error", function (err) {
+        if (err.message !== "Connection closing") {
+          this.logger.error("[AMQP] connection error", err);
+          throw new MoleculerError("[AMQP] connection unhandled exception");
+        }
+      });
+      this.$amqpConnection.on("close", function () {
+        this.logger.error("[AMQP] connection is closed");
+        throw new MoleculerError("[AMQP] connection closed");
+      });
+
+      try {
+        await this.initAMQPConsumers();
+      } catch (ex) {
+        this.logger.error(ex);
+        throw new MoleculerError("[AMQP] Failed to init consumers");
+      }
+    },
+
     async assertAMQPQueue(queueName) {
       if (!Deep(this.$amqpQueues, [queueName, "channel"])) {
         const {
@@ -224,9 +251,12 @@ module.exports = (options) => ({
           const channel = await this.$amqpConnection.createChannel();
           channel.on("close", () => {
             Deep(this.$amqpQueues, [queueName, "channel"], null);
+            this.logger.error("[AMQP] channel closed");
+            throw new MoleculerError("[AMQP] channel closed");
           });
           channel.on("error", (err) => {
-            this.logger.error(err);
+            this.logger.error("[AMQP] channel error", err);
+            throw new MoleculerError("[AMQP] channel unhandled exception");
           });
 
           await channel.assertQueue(queueName, amqpOptions.queueAssert);
@@ -242,7 +272,7 @@ module.exports = (options) => ({
 
           Deep(this.$amqpQueues, [queueName, "channel"], channel);
         } catch (err) {
-          this.logger.error(err);
+          this.logger.error("[AMQP] assert amqp queue error", err);
           throw new MoleculerError("Unable to start queue");
         }
       }
@@ -295,6 +325,7 @@ module.exports = (options) => ({
   async started() {
     if (!Deep(this.settings, "amqp.connection")) {
       this.logger.warn(`${this.version ? `v${this.version}.` : ""}${this.name} is disabled because of empty "amqp.connection" setting`);
+      return;
     }
 
     if (!["string", "object"].includes(typeof this.settings.amqp.connection)) {
@@ -304,20 +335,13 @@ module.exports = (options) => ({
     try {
       this.$amqpConnection = await Amqplib.connect(this.settings.amqp.connection);
     } catch (ex) {
-      this.logger.error(ex);
-      throw new MoleculerError("Unable to connect to AMQP");
+      this.logger.error("[AMQP] Unable to connect to rabbitmq", ex);
+      throw new MoleculerError("[AMQP] Unable to connect to rabbitmq");
     }
 
     process.on("SIGTERM", gracefulShutdown.bind(this));
     process.on("SIGINT", gracefulShutdown.bind(this));
     process.on("SIGUSR1", gracefulShutdown.bind(this));
     process.on("SIGUSR2", gracefulShutdown.bind(this));
-
-    try {
-      await this.initAMQPConsumers();
-    } catch (ex) {
-      this.logger.error(ex);
-      throw new MoleculerError("Failed to init AMQP consumers");
-    }
   }
 });

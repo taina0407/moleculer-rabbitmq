@@ -1,3 +1,15 @@
+## v1.1.5
+- [Bug]
+  - Fix bug not await when calling channel.ack and channel.reject
+- [Improvement]
+  - Handle connection and channel exception and close event
+- [Chore]
+  - Audit error message
+
+## v1.1.4
+- [Fix]
+  - Fix bug message headers is clear when retry
+
 ## v1.1.3
 - [Fix]
   - Fix bug graceful shutdown not cancel consumer
