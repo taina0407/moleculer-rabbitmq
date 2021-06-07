@@ -139,7 +139,7 @@ Example:
   actions: {
     hello: {
       queue: {
-        retryExchangeAssert: {
+        retryExchangeAssert: { // RabbitMQ advance exchange option
           durable: true, // (boolean) if true, the exchange will survive broker restarts. Defaults to true.
           autoDelete: false, // (boolean) if true, the exchange will be destroyed once the number of bindings for which it is the source drop to zero. Defaults to false.
           alternateExchange: null, // (string) an exchange to send messages to if this exchange can’t route them to any queues.
