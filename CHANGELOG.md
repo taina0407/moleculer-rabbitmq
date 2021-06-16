@@ -1,3 +1,7 @@
+## v1.1.9
+- [Bug]
+  - Fix bug retry message cause worker crash
+
 ## v1.1.8
 - [Bug]
   - Fix bug calling logger in incorrect this

@@ -107,9 +107,9 @@ const initAMQPQueues = function (schema) {
           } catch (error) {
             try {
               if (retryOptions === true) {
-                await channel.nack(msg, true, true);
+                await channel.nack(msg, false, true);
               } else if (retryOptions && retryOptions.max_retry > 0) {
-                await channel.nack(msg, true, false);
+                await channel.nack(msg, false, false);
                 const retry_count = (Deep(msg, "properties.headers.x-retries") || 0) + 1;
                 let retry_delay = 0;
                 if (typeof retryOptions.delay === "function") {
@@ -130,7 +130,7 @@ const initAMQPQueues = function (schema) {
                   error.message += ` (Reached max_retry=${retryOptions.max_retry}, throwing away)`;
                 }
               } else {
-                await channel.nack(msg, true, false);
+                await channel.nack(msg, false, false);
               }
               this.logger.error("[AMQP] consumer throw error", error);
             } catch (retryError) {
