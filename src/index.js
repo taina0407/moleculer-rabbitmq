@@ -108,6 +108,7 @@ const initAMQPQueues = function (schema) {
             try {
               if (retryOptions === true) {
                 await channel.nack(msg, false, true);
+                this.logger.debug(`[AMQP] consumer throw error. Retring ...`, error);
               } else if (retryOptions && retryOptions.max_retry > 0) {
                 await channel.nack(msg, false, false);
                 const retry_count = (Deep(msg, "properties.headers.x-retries") || 0) + 1;
@@ -119,7 +120,7 @@ const initAMQPQueues = function (schema) {
                 }
 
                 if (retry_count <= retryOptions.max_retry) {
-                  error.message += ` (Retring retry_count=${retry_count} in ${retry_delay} ms)`;
+                  this.logger.debug(`[AMQP] consumer throw error. Retring retry_count=${retry_count} in ${retry_delay} ms`, error);
                   const headers = Deep(msg, "properties.headers") || {};
                   headers["x-retries"] = retry_count;
                   headers["x-delay"] = retry_delay;
@@ -127,12 +128,12 @@ const initAMQPQueues = function (schema) {
                     headers,
                   });
                 } else {
-                  error.message += ` (Reached max_retry=${retryOptions.max_retry}, throwing away)`;
+                  this.logger.error(`[AMQP] consumer throw error. Reached max_retry=${retryOptions.max_retry}, throwing away`, error);
                 }
               } else {
                 await channel.nack(msg, false, false);
+                this.logger.error(`[AMQP] consumer throw error`, error);
               }
-              this.logger.error("[AMQP] consumer throw error", error);
             } catch (retryError) {
               this.logger.error("[AMQP] consumer retry message failed", retryError);
             }
