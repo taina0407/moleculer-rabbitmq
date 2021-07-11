@@ -1,3 +1,7 @@
+## v1.1.10
+- [Bug]
+  - Only log error message when retry job failed, and log debug messages when job retried
+
 ## v1.1.9
 - [Bug]
   - Fix bug retry message cause worker crash
