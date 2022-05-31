@@ -1,3 +1,7 @@
+## v1.2.0
+- [Deps]
+  - Upgrade amqplib version to 0.9.1
+
 ## v1.1.10
 - [Bug]
   - Only log error message when retry job failed, and log debug messages when job retried
