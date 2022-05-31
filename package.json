@@ -28,7 +28,7 @@
     "moleculer-repl": "^0.6.4"
   },
   "dependencies": {
-    "amqplib": "^0.7.1",
+    "amqplib": "^0.9.1",
     "deep-get-set": "^1.1.1",
     "lodash.defaultsdeep": "^4.6.1"
   },
